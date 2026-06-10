@@ -157,32 +157,52 @@ document.getElementById('battle-btn').addEventListener('click', async () => {
     let logHtml = `【${player.name} VS ${enemy.name} バトルスタート！】<br>`;
     let turn = 1;
 
-    while (player.hp > 0 && enemy.hp > 0) {
-        logHtml += `<br>--- ターン ${turn} ---<br>`;
+while (player.hp > 0 && enemy.hp > 0) {
+    logHtml += `<br>--- ターン ${turn} ---<br>`;
 
-        // プレイヤーの攻撃ターン
-        let pDamage = player.attack - enemy.defense;
-        if (pDamage <= 0) pDamage = 3; // 最低3ダメージ保証
-        enemy.hp -= pDamage;
-        if (enemy.hp < 0) enemy.hp = 0;
-        logHtml += `⚔️ ${player.name}の攻撃！ ${enemy.name}に ${pDamage} のダメージ！ (残りHP: ${enemy.hp})<br>`;
+    // ==========================================
+    // 1. プレイヤーの攻撃ターン
+    // ==========================================
+    let pDamage = player.attack - enemy.defense;
+    let isPlayerCritical = (Math.random() * 100) < 10; // 10%の確率でtrueになる
 
-        if (enemy.hp <= 0) break;
-
-        // エネミーの攻撃ターン
-        let eDamage = enemy.attack - player.defense;
-        if (eDamage <= 0) eDamage = 3; // 最低3ダメージ保証
-        player.hp -= eDamage;
-        if (player.hp < 0) player.hp = 0;
-        logHtml += `💥 ${enemy.name}の攻撃！ ${player.name}に ${eDamage} のダメージ！ (残りHP: ${player.hp})<br>`;
-
-        turn++;
-        
-        if (turn > 100) {
-            logHtml += "<br>試合が長引いたためドロー！<br>";
-            break;
-        }
+    if (isPlayerCritical) {
+        pDamage = player.attack; // クリティカル時は敵の守備力を無視！
+        logHtml += `✨ <strong>【会心の一撃！】</strong> `;
+    } else if (pDamage <= 0) {
+        pDamage = 3; // 通常攻撃の最低保証
     }
+
+    enemy.hp -= pDamage;
+    if (enemy.hp < 0) enemy.hp = 0;
+    logHtml += `⚔️ ${player.name}の攻撃！ ${enemy.name}に ${pDamage} のダメージ！ (残りHP: ${enemy.hp})<br>`;
+
+    if (enemy.hp <= 0) break; // 敵が倒れたら終了
+
+    // ==========================================
+    // 2. エネミーの攻撃ターン
+    // ==========================================
+    let eDamage = enemy.attack - player.defense;
+    let isEnemyCritical = (Math.random() * 100) < 10; // 敵も10%の確率でクリティカル
+
+    if (isEnemyCritical) {
+        eDamage = enemy.attack; // 敵のクリティカル時もこちらの守備力を無視！
+        logHtml += `💥 <strong>【痛恨の一撃！】</strong> `;
+    } else if (eDamage <= 0) {
+        eDamage = 3; // 通常攻撃の最低保証
+    }
+
+    player.hp -= eDamage;
+    if (player.hp < 0) player.hp = 0;
+    logHtml += `💥 ${enemy.name}の攻撃！ ${player.name}に ${eDamage} のダメージ！ (残りHP: ${player.hp})<br>`;
+
+    turn++;
+    
+    if (turn > 100) {
+        logHtml += "<br>試合が長引いたためドロー！<br>";
+        break;
+    }
+}
 
     logHtml += "<br>=======================<br>";
     if (player.hp > 0 && enemy.hp <= 0) {
