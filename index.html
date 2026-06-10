@@ -133,13 +133,20 @@ document.getElementById('battle-btn').addEventListener('click', async () => {
         return;
     }
 
-    // キャラクターデータを生成
-    const player = await generateStatus("プレイヤー", pInput);
-    const enemy = await generateStatus("エネミー", eInput);
+    // 1. 2体のキャラクターデータを生成
+    // (元データを作った後、structuredClone で完全に独立した別物としてコピーする)
+    const playerRaw = await generateStatus("プレイヤー", pInput);
+    const enemyRaw  = await generateStatus("エネミー", eInput);
+
+    const player = structuredClone(playerRaw);
+    const enemy  = structuredClone(enemyRaw);
+
+    // 名前の表示が被って見づらいので、後ろに(自分)(敵)と分かりやすく明記
+    player.name = player.name + "(自分)";
+    enemy.name  = enemy.name + "(敵)";
 
     player.hp = player.maxHp;
     enemy.hp = enemy.maxHp;
-
     // 画面にそれぞれの生成された名前と初期ステータスを表示
     document.getElementById('p-status').innerHTML = 
         `<strong>${player.name}</strong><br>HP: ${player.hp} / ATK: ${player.attack} / DEF: ${player.defense}`;
