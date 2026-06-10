@@ -50,10 +50,10 @@ let enemyUid = "";
 const prefixes = ["伝説の", "暗黒の", "光の", "迷える", "爆速の", "鋼鉄の", "古代の", "野生の", "うるわしの", "虚無の"];
 const tribes = ["スライム", "ドラゴン", "ロボット", "ゴーレム", "ファイター", "マジシャン", "バード", "ビースト", "ゴースト", "オーク"];
 
-// NFCスキャンを処理する共通関数 (Android Chrome専用)
+// NFCスキャンを処理する共通関数 (どんなカードでも強制検知する修正版)
 async function startNfcScan(target) {
     if (!('NDEFReader' in window)) {
-        alert("お使いのブラウザ・端末はWeb NFCに対応していません。AndroidのChromeでお試しください。");
+        alert("お使いのブラウザ・端末はWeb NFCに対応していません。");
         return null;
     }
 
@@ -61,13 +61,21 @@ async function startNfcScan(target) {
         const ndef = new NDEFReader();
         await ndef.scan();
         
-        // プロンプトを書き換える
         document.getElementById(`${target}-uid`).textContent = "カードをかざして下さい...";
 
         return new Promise((resolve) => {
             ndef.onreading = (event) => {
-                // カードの固有識別番号（UID）を取得
-                resolve(event.serialNumber);
+                // 1. まずは通常のシリアル番号（UID）を狙う
+                let id = event.serialNumber;
+                
+                // 2. もしUIDが空っぽ、またはバグで取得できない場合（Suicaなどの対策）
+                if (!id || id === "") {
+                    // かざした瞬間の「タイムスタンプ（ミリ秒単位の時間）」を擬似IDにする
+                    // これにより「その瞬間にピッとやった事実」をトリガーにしてキャラを作れます
+                    id = "NFC_" + Date.now();
+                }
+                
+                resolve(id);
             };
         });
     } catch (error) {
