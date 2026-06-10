@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>お名前バトラー</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: 'Courier New', sans-serif;
+            background-color: #f0f0f0;
+            padding: 20px;
+        }
+        .container {
+            background-color: white;
+            display: inline-block;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        .flex-inputs {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+        }
+        .input-box {
+            background-color: #eef5ff;
+            padding: 15px;
+            border-radius: 8px;
+            width: 45%;
+        }
+        input {
+            font-size: 16px;
+            padding: 6px;
+            width: 80%;
+            text-align: center;
+            margin-top: 5px;
+        }
+        button {
+            font-size: 20px;
+            padding: 12px 30px;
+            background-color: #FF9500;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #e08400;
+        }
+        #battle-log {
+            text-align: left;
+            background-color: #333;
+            color: #00FF00;
+            padding: 15px;
+            border-radius: 5px;
+            height: 300px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.6;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>お名前バトラー 〜はるかなる野望〜</h1>
+    
+    <div class="flex-inputs">
+        <div class="input-box">
+            <strong>プレイヤー (自分)</strong><br>
+            <input type="text" id="p-id" value="味方のカードID">
+            <div id="p-status" style="margin-top: 10px; font-size: 14px;">---</div>
+        </div>
+        
+        <div class="input-box" style="background-color: #ffeef0;">
+            <strong>エネミー (敵)</strong><br>
+            <input type="text" id="e-id" value="敵のカードID">
+            <div id="e-status" style="margin-top: 10px; font-size: 14px;">---</div>
+        </div>
+    </div>
+
+    <button id="battle-btn">バトル開始！</button>
+
+    <div id="battle-log">ここに戦闘ログが表示されます...</div>
+</div>
+
+<script>
+// 【追加】二つ名と種族の単語リスト
+const prefixes = ["伝説の", "暗黒の", "光の", "迷える", "爆速の", "鋼鉄の", "古代の", "野生の", "うるわしの", "虚無の"];
+const tribes = ["スライム", "ドラゴン", "ロボット", "ゴーレム", "ファイター", "マジシャン", "バード", "ビースト", "ゴースト", "オーク"];
+
+// 文字列からステータス（二つ名・種族入り）を生成する共通関数
+async function generateStatus(defaultName, inputStr) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(inputStr);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = new Uint8Array(hashBuffer);
+
+    // 1. 攻守・HPのブレンド計算（前回のバランスを維持）
+    const mixAtk = (hashArray[0] + hashArray[3] + hashArray[6]) / 3;
+    const mixDef = (hashArray[1] + hashArray[4] + hashArray[7]) / 3;
+    const mixHp  = (hashArray[2] + hashArray[5] + hashArray[8]) / 3;
+
+    // 2. 余っているハッシュ値を使って、インデックスを決定
+    // 配列の長さで割った「余り（%）」を使うことで、必ず配列の範囲内に収める
+    const prefixIndex = hashArray[9] % prefixes.length;
+    const tribeIndex = hashArray[10] % tribes.length;
+
+    // 二つ名 + 種族 でキャラクター固有の名前を合成
+    const fullName = `${prefixes[prefixIndex]}${tribes[tribeIndex]}`;
+
+    return {
+        name: fullName, // 生成された名前に差し替え
+        maxHp: Math.floor((mixHp / 255) * (120 - 50)) + 50,
+        hp: 0,
+        attack: Math.floor((mixAtk / 255) * (50 - 5)) + 5,
+        defense: Math.floor((mixDef / 255) * (50 - 5)) + 5
+    };
+}
+
+document.getElementById('battle-btn').addEventListener('click', async () => {
+    const pInput = document.getElementById('p-id').value;
+    const eInput = document.getElementById('e-id').value;
+    const logBox = document.getElementById('battle-log');
+
+    if (!pInput || !eInput) {
+        alert("両方の名前（ID）を入力してください！");
+        return;
+    }
+
+    // キャラクターデータを生成
+    const player = await generateStatus("プレイヤー", pInput);
+    const enemy = await generateStatus("エネミー", eInput);
+
+    player.hp = player.maxHp;
+    enemy.hp = enemy.maxHp;
+
+    // 画面にそれぞれの生成された名前と初期ステータスを表示
+    document.getElementById('p-status').innerHTML = 
+        `<strong>${player.name}</strong><br>HP: ${player.hp} / ATK: ${player.attack} / DEF: ${player.defense}`;
+    document.getElementById('e-status').innerHTML = 
+        `<strong>${enemy.name}</strong><br>HP: ${enemy.hp} / ATK: ${enemy.attack} / DEF: ${enemy.defense}`;
+
+    // バトルシミュレーション開始
+    let logHtml = `【${player.name} VS ${enemy.name} バトルスタート！】<br>`;
+    let turn = 1;
+
+    while (player.hp > 0 && enemy.hp > 0) {
+        logHtml += `<br>--- ターン ${turn} ---<br>`;
+
+        // プレイヤーの攻撃ターン
+        let pDamage = player.attack - enemy.defense;
+        if (pDamage <= 0) pDamage = 3; // 最低3ダメージ保証
+        enemy.hp -= pDamage;
+        if (enemy.hp < 0) enemy.hp = 0;
+        logHtml += `⚔️ ${player.name}の攻撃！ ${enemy.name}に ${pDamage} のダメージ！ (残りHP: ${enemy.hp})<br>`;
+
+        if (enemy.hp <= 0) break;
+
+        // エネミーの攻撃ターン
+        let eDamage = enemy.attack - player.defense;
+        if (eDamage <= 0) eDamage = 3; // 最低3ダメージ保証
+        player.hp -= eDamage;
+        if (player.hp < 0) player.hp = 0;
+        logHtml += `💥 ${enemy.name}の攻撃！ ${player.name}に ${eDamage} のダメージ！ (残りHP: ${player.hp})<br>`;
+
+        turn++;
+        
+        if (turn > 100) {
+            logHtml += "<br>試合が長引いたためドロー！<br>";
+            break;
+        }
+    }
+
+    logHtml += "<br>=======================<br>";
+    if (player.hp > 0 && enemy.hp <= 0) {
+        logHtml += `🎉 【勝利】 ${player.name}の勝ち！`;
+    } else if (enemy.hp > 0 && player.hp <= 0) {
+        logHtml += `💀 【敗北】 ${enemy.name}の勝ち...`;
+    } else {
+        logHtml += `🤝 【引き分け】`;
+    }
+
+    logBox.innerHTML = logHtml;
+    logBox.scrollTop = logBox.scrollHeight;
+});
+</script>
+
+</body>
+</html>
