@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web NFC版 - リアルNFCバトラー</title>
+    <style>
+        body { text-align: center; font-family: 'Courier New', sans-serif; background-color: #f0f0f0; padding: 20px; }
+        .container { background-color: white; display: inline-block; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 600px; width: 100%; }
+        .flex-inputs { display: flex; justify-content: space-around; margin-bottom: 20px; }
+        .input-box { background-color: #eef5ff; padding: 15px; border-radius: 8px; width: 45%; }
+        .scan-status { font-size: 14px; color: #666; font-weight: bold; margin-top: 5px; }
+        button { font-size: 18px; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin: 5px; }
+        .btn-scan { background-color: #007AFF; color: white; }
+        .btn-battle { background-color: #FF9500; color: white; width: 100%; font-size: 22px; margin-top: 15px; }
+        #battle-log { text-align: left; background-color: #333; color: #00FF00; padding: 15px; border-radius: 5px; height: 250px; overflow-y: auto; font-size: 14px; line-height: 1.6; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>リアルNFCバトラー (Android Web版)</h1>
+    
+    <div class="flex-inputs">
+        <div class="input-box">
+            <strong>プレイヤー (自分)</strong><br>
+            <button class="btn-scan" id="p-scan-btn">カードをスキャン</button>
+            <div class="scan-status" id="p-uid">UID: 未登録</div>
+            <div id="p-status" style="margin-top: 10px; font-size: 12px; color: #444;"></div>
+        </div>
+        
+        <div class="input-box" style="background-color: #ffeef0;">
+            <strong>エネミー (敵)</strong><br>
+            <button class="btn-scan" id="e-scan-btn" style="background-color: #d9534f;">カードをスキャン</button>
+            <div class="scan-status" id="e-uid">UID: 未登録</div>
+            <div id="e-status" style="margin-top: 10px; font-size: 12px; color: #444;"></div>
+        </div>
+    </div>
+
+    <button class="btn-battle" id="battle-btn" disabled>バトル開始！</button>
+
+    <div id="battle-log">両方のカードをスキャンするとバトルが解禁されます...</div>
+</div>
+
+<script>
+// グローバルでスキャンされたUIDを保持する変数
+let playerUid = "";
+let enemyUid = "";
+
+const prefixes = ["伝説の", "暗黒の", "光の", "迷える", "爆速の", "鋼鉄の", "古代の", "野生の", "うるわしの", "虚無の"];
+const tribes = ["スライム", "ドラゴン", "ロボット", "ゴーレム", "ファイター", "マジシャン", "バード", "ビースト", "ゴースト", "オーク"];
+
+// NFCスキャンを処理する共通関数 (Android Chrome専用)
+async function startNfcScan(target) {
+    if (!('NDEFReader' in window)) {
+        alert("お使いのブラウザ・端末はWeb NFCに対応していません。AndroidのChromeでお試しください。");
+        return null;
+    }
+
+    try {
+        const ndef = new NDEFReader();
+        await ndef.scan();
+        
+        // プロンプトを書き換える
+        document.getElementById(`${target}-uid`).textContent = "カードをかざして下さい...";
+
+        return new Promise((resolve) => {
+            ndef.onreading = (event) => {
+                // カードの固有識別番号（UID）を取得
+                resolve(event.serialNumber);
+            };
+        });
+    } catch (error) {
+        alert("NFCスキャンエラー: " + error);
+        return null;
+    }
+}
+
+// プレイヤー側のスキャンボタン
+document.getElementById('p-scan-btn').addEventListener('click', async () => {
+    const uid = await startNfcScan('p');
+    if (uid) {
+        playerUid = uid;
+        document.getElementById('p-uid').textContent = "UID: " + uid;
+        const char = await generateStatus("プレイヤー", uid);
+        document.getElementById('p-status').innerHTML = `<strong>${char.name}</strong><br>HP: ${char.maxHp} / ATK: ${char.attack} / DEF: ${char.defense}`;
+        checkReady();
+    }
+});
+
+// エネミー側のスキャンボタン
+document.getElementById('e-scan-btn').addEventListener('click', async () => {
+    const uid = await startNfcScan('e');
+    if (uid) {
+        enemyUid = uid;
+        document.getElementById('e-uid').textContent = "UID: " + uid;
+        const char = await generateStatus("エネミー", uid);
+        document.getElementById('e-status').innerHTML = `<strong>${char.name}</strong><br>HP: ${char.maxHp} / ATK: ${char.attack} / DEF: ${char.defense}`;
+        checkReady();
+    }
+});
+
+// 両方スキャンされたらバトルボタンを活性化
+function checkReady() {
+    if (playerUid && enemyUid) {
+        document.getElementById('battle-btn').disabled = false;
+        document.getElementById('battle-log').textContent = "バトルの準備が完了しました！";
+    }
+}
+
+// ステータス生成ロジック（試作3号機から完全据え置き）
+async function generateStatus(defaultName, inputStr) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(inputStr);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = new Uint8Array(hashBuffer);
+
+    const mixAtk = (hashArray[0] + hashArray[3] + hashArray[6]) / 3;
+    const mixDef = (hashArray[1] + hashArray[4] + hashArray[7]) / 3;
+    const mixHp  = (hashArray[2] + hashArray[5] + hashArray[8]) / 3;
+
+    const prefixIndex = hashArray[9] % prefixes.length;
+    const tribeIndex = hashArray[10] % tribes.length;
+    const fullName = `${prefixes[prefixIndex]}${tribes[tribeIndex]}`;
+
+    return {
+        name: fullName,
+        maxHp: Math.floor((mixHp / 255) * (120 - 50)) + 50,
+        hp: 0,
+        attack: Math.floor((mixAtk / 255) * (50 - 5)) + 5,
+        defense: Math.floor((mixDef / 255) * (50 - 5)) + 5
+    };
+}
+
+// バトル実行処理（ここも前回のロジック・会心の一撃入りをそのまま使用）
+document.getElementById('battle-btn').addEventListener('click', async () => {
+    const logBox = document.getElementById('battle-log');
+    const playerRaw = await generateStatus("プレイヤー", playerUid);
+    const enemyRaw  = await generateStatus("エネミー", enemyUid);
+
+    const player = structuredClone(playerRaw);
+    const enemy  = structuredClone(enemyRaw);
+    player.name += "(自分)";
+    enemy.name += "(敵)";
+    player.hp = player.maxHp;
+    enemy.hp = enemy.maxHp;
+
+    let logHtml = `【${player.name} VS ${enemy.name} バトルスタート！】<br>`;
+    let turn = 1;
+
+    while (player.hp > 0 && enemy.hp > 0) {
+        logHtml += `<br>--- ターン ${turn} ---<br>`;
+
+        // プレイヤーの攻撃
+        let pDamage = player.attack - enemy.defense;
+        let isPlayerCritical = (Math.random() * 100) < 10;
+        if (isPlayerCritical) {
+            pDamage = player.attack;
+            logHtml += `✨ <strong>【会心の一撃！】</strong> `;
+        } else if (pDamage <= 0) {
+            pDamage = 3;
+        }
+        enemy.hp -= pDamage;
+        if (enemy.hp < 0) enemy.hp = 0;
+        logHtml += `⚔️ ${player.name}の攻撃！ ${enemy.name}に ${pDamage} のダメージ！ (残りHP: ${enemy.hp})<br>`;
+
+        if (enemy.hp <= 0) break;
+
+        // エネミーの攻撃
+        let eDamage = enemy.attack - player.defense;
+        let isEnemyCritical = (Math.random() * 100) < 10;
+        if (isEnemyCritical) {
+            eDamage = enemy.attack;
+            logHtml += `💥 <strong>【痛恨の一撃！】</strong> `;
+        } else if (eDamage <= 0) {
+            eDamage = 3;
+        }
+        player.hp -= eDamage;
+        if (player.hp < 0) player.hp = 0;
+        logHtml += `💥 ${enemy.name}の攻撃！ ${player.name}に ${eDamage} のダメージ！ (残りHP: ${player.hp})<br>`;
+
+        turn++;
+        if (turn > 100) { logHtml += "<br>ドロー！<br>"; break; }
+    }
+
+    logHtml += "<br>=======================<br>";
+    if (player.hp > 0 && enemy.hp <= 0) { logHtml += `🎉 【勝利】 ${player.name}の勝ち！`; } 
+    else if (enemy.hp > 0 && player.hp <= 0) { logHtml += `💀 【敗北】 ${enemy.name}の勝ち...`; } 
+    else { logHtml += `🤝 【引き分け】`; }
+
+    logBox.innerHTML = logHtml;
+    logBox.scrollTop = logBox.scrollHeight;
+});
+</script>
+
+</body>
+</html>
